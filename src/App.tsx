@@ -158,10 +158,14 @@ export function App() {
     new Set()
   );
 
+  // Ref for scroll-to-top on page search
+  const pagesScrollRef = useRef<HTMLDivElement>(null);
+
   const groupsRef = useRef<readonly LocalizationGroup[]>([]);
   const localesRef = useRef<readonly Locale[]>([]);
 
   const [isLoadingFilters, setIsLoadingFilters] = useState(true);
+  const lastClickedIndexRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (framer.mode !== "localization") return;
@@ -640,7 +644,14 @@ export function App() {
             <>
               {/* Pages */}
               <h3 style={{ marginBottom: "8px" }}>Pages</h3>
-              <div style={{ marginBottom: "16px" }}>
+              <div
+                ref={pagesScrollRef}
+                style={{
+                  marginBottom: "16px",
+                  maxHeight: "600px",
+                  overflowY: "auto",
+                }}
+              >
                 <div className="row mb-8">
                   <button
                     className="framer-button-secondary"
@@ -662,13 +673,18 @@ export function App() {
                   </button>
                 </div>
 
-                <div className="search-wrapper">
+                <div className="search-wrapper search-sticky">
                   <input
                     type="text"
                     placeholder="Search pages…"
                     className="search-input"
                     value={pageSearch}
-                    onChange={(e) => setPageSearch(e.target.value)}
+                    onChange={(e) => {
+                      setPageSearch(e.target.value);
+                      if (pagesScrollRef.current) {
+                        pagesScrollRef.current.scrollTop = 0;
+                      }
+                    }}
                   />
 
                   {pageSearch.trim() !== "" && (
@@ -681,35 +697,152 @@ export function App() {
                     </button>
                   )}
                 </div>
+                {(() => {
+                  const query = pageSearch.trim().toLowerCase();
 
-                <div style={{ maxHeight: "360px", overflowY: "auto" }}>
-                  {[...groupsRef.current]
+                  // 1. Filter by search
+                  // 1. Filter by search
+                  const visibleGroups = [...groupsRef.current]
                     .filter((g) => {
-                      if (!pageSearch.trim()) return true; // show all when search is empty
-                      const query = pageSearch.trim().toLowerCase();
+                      if (!query) return true;
                       return g.name.toLowerCase().includes(query);
                     })
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((group) => (
-                      <label key={group.id} className="checkbox-row">
-                        <input
-                          type="checkbox"
-                          checked={selectedGroupIds.has(group.id)}
-                          onChange={() => {
-                            const next = new Set(selectedGroupIds);
-                            if (next.has(group.id)) {
-                              next.delete(group.id);
-                            } else {
-                              next.add(group.id);
-                            }
-                            setSelectedGroupIds(next);
+                    .sort((a, b) => a.name.localeCompare(b.name));
+
+                  // 2. Flatten visible groups into an ordered list
+                  const visibleFlat = visibleGroups;
+
+                  // 3. Group items by "/" or ">" ("/" takes priority)
+                  const grouped: Record<string, typeof visibleGroups> = {};
+                  const ungrouped: typeof visibleGroups = [];
+
+                  visibleGroups.forEach((g) => {
+                    let prefix: string | null = null;
+
+                    // Slash grouping
+                    if (g.name.includes("/")) {
+                      prefix = g.name.split("/")[0].trim();
+                    }
+                    // Arrow grouping (ASCII or Unicode)
+                    else if (g.name.includes(">") || g.name.includes("›")) {
+                      const arrowChar = g.name.includes("›") ? "›" : ">";
+                      prefix = g.name.split(arrowChar)[0].trim();
+                    }
+
+                    if (prefix) {
+                      if (!grouped[prefix]) grouped[prefix] = [];
+                      grouped[prefix].push(g);
+                    } else {
+                      ungrouped.push(g);
+                    }
+                  });
+
+                  const handleCheckboxClick = (
+                    groupId: string,
+                    e: React.MouseEvent<HTMLInputElement>
+                  ) => {
+                    const index = visibleFlat.findIndex(
+                      (g) => g.id === groupId
+                    );
+                    if (index === -1) return;
+
+                    const next = new Set(selectedGroupIds);
+
+                    // If shift key held + previous index exists → select range
+                    if (e.shiftKey && lastClickedIndexRef.current !== null) {
+                      const start = Math.min(
+                        lastClickedIndexRef.current,
+                        index
+                      );
+                      const end = Math.max(lastClickedIndexRef.current, index);
+
+                      for (let i = start; i <= end; i++) {
+                        next.add(visibleFlat[i].id);
+                      }
+
+                      setSelectedGroupIds(next);
+                      return;
+                    }
+
+                    // Normal toggle
+                    if (next.has(groupId)) {
+                      next.delete(groupId);
+                    } else {
+                      next.add(groupId);
+                    }
+
+                    setSelectedGroupIds(next);
+
+                    // Update last clicked index
+                    lastClickedIndexRef.current = index;
+                  };
+
+                  const output: JSX.Element[] = [];
+
+                  // Render grouped sections
+                  Object.entries(grouped).forEach(([prefix, items]) => {
+                    output.push(
+                      <div key={prefix} style={{ marginBottom: "14px" }}>
+                        <div
+                          style={{
+                            fontWeight: 600,
+                            fontSize: "13px",
+                            margin: "6px 0 6px 2px",
+                            opacity: 0.7,
                           }}
-                          style={{ marginRight: "6px" }}
-                        />
-                        {group.name}
-                      </label>
-                    ))}
-                </div>
+                        >
+                          {prefix}
+                        </div>
+
+                        {items.map((group) => (
+                          <label key={group.id} className="checkbox-row">
+                            <input
+                              type="checkbox"
+                              checked={selectedGroupIds.has(group.id)}
+                              onClick={(e) => handleCheckboxClick(group.id, e)}
+                              readOnly
+                              style={{ marginRight: "6px" }}
+                            />
+                            {group.name}
+                          </label>
+                        ))}
+                      </div>
+                    );
+                  });
+
+                  // Render ungrouped ("Other")
+                  if (ungrouped.length > 0) {
+                    output.push(
+                      <div key="other" style={{ marginBottom: "14px" }}>
+                        <div
+                          style={{
+                            fontWeight: 600,
+                            fontSize: "13px",
+                            margin: "6px 0 6px 2px",
+                            opacity: 0.7,
+                          }}
+                        >
+                          Other
+                        </div>
+
+                        {ungrouped.map((group) => (
+                          <label key={group.id} className="checkbox-row">
+                            <input
+                              type="checkbox"
+                              checked={selectedGroupIds.has(group.id)}
+                              onClick={(e) => handleCheckboxClick(group.id, e)}
+                              readOnly
+                              style={{ marginRight: "6px" }}
+                            />
+                            {group.name}
+                          </label>
+                        ))}
+                      </div>
+                    );
+                  }
+
+                  return output;
+                })()}
               </div>
 
               {/* Languages */}
