@@ -12,9 +12,11 @@ import "./App.css";
 
 framer.showUI({
   position: "top right",
-  width: 900,
-  height: 600,
+  width: 1400,
+  height: 1000,
   resizable: true,
+  minWidth: 900,
+  minHeight: 600,
 });
 
 type NotificationVariant = "info" | "success" | "warning" | "error";
@@ -601,15 +603,7 @@ export function App() {
   /* ---------------------------------------------------------- */
 
   return (
-    <div
-      style={{
-        padding: "20px",
-        background: "var(--framer-color-bg)",
-        color: "var(--framer-color-text-primary)",
-        height: "100%",
-        overflowY: "auto",
-      }}
-    >
+    <div className="app-container">
       <header style={{ marginBottom: "20px" }}>
         <h1 style={{ margin: 0 }}>Framer Localization Sync</h1>
         <p
@@ -633,18 +627,11 @@ export function App() {
           display: "grid",
           gridTemplateColumns: "400px 1fr",
           gap: "24px",
+          height: "100%",
         }}
       >
         {/* LEFT PANEL — FILTERS */}
-        <aside
-          style={{
-            background: "var(--framer-color-bg-subtle)",
-            padding: "16px",
-            borderRadius: "10px",
-            border: "1px solid var(--framer-color-border)",
-            height: "fit-content",
-          }}
-        >
+        <aside className="panel">
           <h2 style={{ fontSize: "16px", marginBottom: "12px" }}>Filters</h2>
 
           {isLoadingFilters && <p>Loading…</p>}
@@ -652,10 +639,9 @@ export function App() {
           {!isLoadingFilters && (
             <>
               {/* Pages */}
+              <h3 style={{ marginBottom: "8px" }}>Pages</h3>
               <div style={{ marginBottom: "16px" }}>
-                <div
-                  style={{ display: "flex", gap: "8px", marginBottom: "8px" }}
-                >
+                <div className="row mb-8">
                   <button
                     className="framer-button-secondary"
                     style={{ flex: 1 }}
@@ -676,21 +662,27 @@ export function App() {
                   </button>
                 </div>
 
-                <h3 style={{ marginBottom: "8px" }}>Pages</h3>
-                <input
-                  type="text"
-                  placeholder="Search pages…"
-                  style={{
-                    width: "100%",
-                    padding: "8px",
-                    borderRadius: "6px",
-                    border: "1px solid var(--framer-color-border)",
-                    marginBottom: "10px",
-                  }}
-                  onChange={(e) => setPageSearch(e.target.value)}
-                />
+                <div className="search-wrapper">
+                  <input
+                    type="text"
+                    placeholder="Search pages…"
+                    className="search-input"
+                    value={pageSearch}
+                    onChange={(e) => setPageSearch(e.target.value)}
+                  />
 
-                <div style={{ maxHeight: "300px", overflowY: "auto" }}>
+                  {pageSearch.trim() !== "" && (
+                    <button
+                      className="search-clear-btn"
+                      onClick={() => setPageSearch("")}
+                      aria-label="Clear search"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ maxHeight: "360px", overflowY: "auto" }}>
                   {[...groupsRef.current]
                     .filter((g) => {
                       if (!pageSearch.trim()) return true; // show all when search is empty
@@ -699,14 +691,7 @@ export function App() {
                     })
                     .sort((a, b) => a.name.localeCompare(b.name))
                     .map((group) => (
-                      <label
-                        key={group.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          marginBottom: "6px",
-                        }}
-                      >
+                      <label key={group.id} className="checkbox-row">
                         <input
                           type="checkbox"
                           checked={selectedGroupIds.has(group.id)}
@@ -730,9 +715,7 @@ export function App() {
               {/* Languages */}
               <div>
                 <h3 style={{ marginBottom: "8px" }}>Languages</h3>
-                <div
-                  style={{ display: "flex", gap: "8px", marginBottom: "8px" }}
-                >
+                <div className="row mb-8">
                   <button
                     className="framer-button-secondary"
                     style={{ flex: 1 }}
@@ -752,16 +735,9 @@ export function App() {
                     Clear All
                   </button>
                 </div>
-                <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+                <div style={{ maxHeight: "360px", overflowY: "auto" }}>
                   {localesRef.current.map((locale) => (
-                    <label
-                      key={locale.code}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        marginBottom: "6px",
-                      }}
-                    >
+                    <label key={locale.code} className="checkbox-row">
                       <input
                         type="checkbox"
                         checked={selectedLocaleCodes.has(locale.code)}
@@ -786,71 +762,73 @@ export function App() {
         </aside>
 
         {/* RIGHT PANEL — ACTIONS */}
-        <section>
+        <section className="panel">
           <h2 style={{ fontSize: "16px", marginBottom: "16px" }}>Actions</h2>
 
           <div
-            style={{ display: "flex", flexDirection: "column", gap: "12px" }}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "12px",
+              padding: "4px 0",
+            }}
           >
+            {/* Export Excel */}
             <button
               className="framer-button-primary"
               onClick={handleExport}
               disabled={actionsDisabled}
-              style={{ padding: "14px", background: "#6B4EFF" }}
             >
               {isExporting ? "Exporting…" : "Export to Excel"}
             </button>
 
+            {/* Export XLIFF */}
             <button
               className="framer-button-primary"
               onClick={handleExportXLIFF}
               disabled={actionsDisabled}
-              style={{
-                padding: "14px",
-                background: "#6B4EFF",
-              }}
             >
               Export XLIFF 1.2
             </button>
 
+            {/* Import Excel */}
             <button
               className="framer-button-secondary"
               onClick={handleImportFileClick}
               disabled={actionsDisabled}
-              style={{ padding: "14px" }}
             >
               {isImporting ? "Importing…" : "Import from Excel"}
             </button>
 
+            {/* Import XLIFF */}
             <button
               className="framer-button-secondary"
               onClick={handleImportXLIFFClick}
               disabled={actionsDisabled}
-              style={{ padding: "14px" }}
             >
               Import XLIFF 1.2
             </button>
           </div>
 
-          {/* hidden inputs */}
+          {/* Fully invisible file inputs */}
           <input
             type="file"
             accept=".xlsx"
-            hidden
             ref={fileInputRef}
             onChange={handleImportFile}
+            style={{ display: "none" }}
           />
           <input
             type="file"
             accept=".xlf,.xliff"
-            hidden
             ref={xlfInputRef}
             onChange={handleImportXLIFF}
+            style={{ display: "none" }}
           />
 
           <p
             style={{
-              marginTop: "20px",
+              marginTop: "24px",
               color: "var(--framer-color-text-secondary)",
             }}
           >
