@@ -1,0 +1,12 @@
+{
+  "name": "Framer Localization Sync",
+  "version": "1.1.0",
+  "id": "locsyn",
+  "description": "Exports and imports localization data between Framer and external translation tools.",
+  "modes": ["localization"],
+  "icon": "icon.svg",
+  "permissions": ["localization", "network"],
+
+  "main": "dist/main.js",
+  "ui": "dist/index.html"
+}
