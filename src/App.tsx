@@ -26,6 +26,8 @@ type ExportRow = {
   sourceId: LocalizationSourceId;
   groupId: string;
   groupName: string;
+  groupType: string;
+  sourceType: string;
   baseValue: string;
   [localeCode: string]: string;
 };
@@ -41,7 +43,7 @@ export function App() {
     "Open this plugin from the Localizations panel to sync translations.";
 
   const [statusMessage, setStatusMessage] = useState(
-    isLocalizationMode ? "Idle" : localizationModeHint
+    isLocalizationMode ? "Idle" : localizationModeHint,
   );
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -74,7 +76,7 @@ export function App() {
 
       const existingSources = new Map();
       existingGroups.forEach((g) =>
-        g.sources.forEach((s) => existingSources.set(s.id, s))
+        g.sources.forEach((s) => existingSources.set(s.id, s)),
       );
 
       const xliffNS = xml.documentElement.namespaceURI || null;
@@ -95,7 +97,7 @@ export function App() {
       if (!targetLocaleObj) {
         notify(
           `Could not map locale "${targetLangRaw}" to any Framer locale`,
-          "error"
+          "error",
         );
         setStatusMessage("Import failed.");
         setIsImporting(false);
@@ -109,12 +111,18 @@ export function App() {
         LocalizationSourceUpdate
       > = {};
 
+      console.log("Processing", units.length, "trans-units from XLF");
+
       for (const unit of units) {
         const id =
           unit.getAttribute("id") || unit.getAttribute("resname") || null;
 
         if (!id) continue;
-        if (!existingSources.has(id)) continue;
+        const existingSource = existingSources.get(id);
+        if (!existingSource) {
+          console.debug("Skipping unknown source ID:", id);
+          continue;
+        }
 
         let targetNode: Element | null = null;
 
@@ -128,8 +136,75 @@ export function App() {
 
         if (!targetNode) continue;
 
-        const rawValue = targetNode.textContent || "";
-        const value = rawValue.trim();
+        // Handle both escaped (&lt;h1&gt;) and unescaped (<h1>) HTML
+        // If target contains child elements, it has unescaped HTML - serialize it
+        // Otherwise use textContent which unescapes entities
+        let value: string;
+        if (targetNode.children.length > 0) {
+          // Has child HTML elements - serialize the innerHTML
+          value = targetNode.innerHTML.trim();
+          console.log(
+            "Using innerHTML (has children):",
+            id,
+            value.substring(0, 50),
+          );
+        } else {
+          // No child elements - use textContent to unescape entities like &lt;
+          value = (targetNode.textContent || "").trim();
+          if (value.includes("<") || value.includes(">")) {
+            console.log(
+              "Using textContent with HTML:",
+              id,
+              "type:",
+              existingSource.type,
+              "value:",
+              value.substring(0, 80),
+            );
+          }
+        }
+
+        // For formattedText, strip outer wrapper tags (h1, h2, p, etc.)
+        // Framer stores just the inner text, applying tags as formatting
+        if (existingSource.type === "formattedText" && value.includes("<")) {
+          const wrapperMatch = value.match(/^<(\w+)[^>]*>(.*)<\/\1>$/s);
+          if (wrapperMatch) {
+            const originalValue = value;
+            const innerContent = wrapperMatch[2].trim();
+
+            // Use DOM parser to strip ALL HTML tags and decode entities
+            // This handles both outer wrappers and inline tags like <strong>, <em>, etc.
+            const tempDiv = document.createElement("div");
+            tempDiv.innerHTML = innerContent;
+            value = tempDiv.textContent || tempDiv.innerText || "";
+            value = value.trim();
+
+            console.log(
+              "Stripped HTML for formattedText:",
+              id,
+              "\nBefore:",
+              originalValue.substring(0, 100),
+              "\nAfter:",
+              value.substring(0, 100),
+            );
+          }
+        }
+
+        // Log original value vs what we're importing for formattedText
+        if (
+          existingSource.type === "formattedText" &&
+          (value.includes("<") || existingSource.value !== value)
+        ) {
+          console.log(
+            "FormattedText field:",
+            id,
+            "\nOriginal:",
+            existingSource.value?.substring(0, 100),
+            "\nImporting:",
+            value.substring(0, 100),
+            "\nMatch:",
+            existingSource.value === value,
+          );
+        }
 
         valuesBySource[id] = {
           [targetLocaleId]:
@@ -151,11 +226,21 @@ export function App() {
   const modeWarningShownRef = useRef(false);
 
   const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
   const [pageSearch, setPageSearch] = useState("");
   const [selectedLocaleCodes, setSelectedLocaleCodes] = useState<Set<string>>(
-    new Set()
+    new Set(),
+  );
+  const [selectedGroupTypes, setSelectedGroupTypes] = useState<Set<string>>(
+    new Set([
+      "page",
+      "settings",
+      "component",
+      "collection",
+      "collection-item",
+      "template",
+    ]),
   );
 
   // Ref for scroll-to-top on page search
@@ -207,22 +292,43 @@ export function App() {
         framer.getLocales(),
         framer.getLocalizationGroups(),
       ]);
+      console.debug(
+        "handleExport: got locales=%d groups=%d",
+        locales.length,
+        groups.length,
+      );
+      if (groups.length > 0)
+        console.debug(
+          "handleExport: sample group",
+          groups[0].id,
+          groups[0].name,
+          groups[0].sources?.length,
+        );
       groupsRef.current = [...groups];
       localesRef.current = [...locales];
 
       const localeCols = locales
         .filter(
           (l) =>
-            selectedLocaleCodes.size === 0 || selectedLocaleCodes.has(l.code)
+            selectedLocaleCodes.size === 0 || selectedLocaleCodes.has(l.code),
         )
         .map((l) => ({
           id: l.id,
           code: l.code,
         }));
+      console.debug(
+        "handleExport: localeCols=%d, selectedLocaleCodes=%d",
+        localeCols.length,
+        selectedLocaleCodes.size,
+      );
 
       const rows: ExportRow[] = [];
 
       const filteredGroups = groups.filter((g) => {
+        // Filter by type
+        if (selectedGroupTypes.size > 0 && !selectedGroupTypes.has(g.type))
+          return false;
+        // Filter by selected IDs
         if (selectedGroupIds.size === 0) return true;
         return selectedGroupIds.has(g.id);
       });
@@ -230,7 +336,7 @@ export function App() {
         // Skip entire group if group name is too long
         if (group.name.length > 32767) {
           console.warn(
-            `Skipping group ${group.id} because groupName length ${group.name.length} > 32767`
+            `Skipping group ${group.id} because groupName length ${group.name.length} > 32767`,
           );
           return;
         }
@@ -240,7 +346,7 @@ export function App() {
           // ❌ Skip if base value too long
           if (baseValue.length > 32767) {
             console.warn(
-              `Skipping sourceId ${source.id}: baseValue length ${baseValue.length} > 32767`
+              `Skipping sourceId ${source.id}: baseValue length ${baseValue.length} > 32767`,
             );
             return;
           }
@@ -254,7 +360,7 @@ export function App() {
 
             if (localized.length > 32767) {
               console.warn(
-                `Skipping sourceId ${source.id}, locale ${locale.code}: value too long (${localized.length})`
+                `Skipping sourceId ${source.id}, locale ${locale.code}: value too long (${localized.length})`,
               );
               skipSource = true;
               return;
@@ -271,6 +377,8 @@ export function App() {
             sourceId: source.id,
             groupId: group.id,
             groupName: group.name,
+            groupType: group.type,
+            sourceType: source.type,
             baseValue,
             ...localizedMap,
           };
@@ -280,11 +388,14 @@ export function App() {
       });
 
       setStatusMessage("Building Excel file…");
+      console.debug("handleExport: building workbook, rows=%d", rows.length);
 
       const headerRow = [
         "sourceId",
         "groupId",
         "groupName",
+        "groupType",
+        "sourceType",
         "baseValue",
         ...localeCols.map((l) => l.code),
       ];
@@ -295,6 +406,8 @@ export function App() {
           r.sourceId,
           r.groupId,
           r.groupName,
+          r.groupType,
+          r.sourceType,
           r.baseValue,
           ...localeCols.map((l) => r[l.code] ?? ""),
         ]),
@@ -339,15 +452,27 @@ export function App() {
 
       const groups = groupsRef.current;
       const locales = localesRef.current;
+      console.debug(
+        "handleExportXLIFF: groups=%d locales=%d selectedGroupIds=%d selectedLocaleCodes=%d",
+        groups.length,
+        locales.length,
+        selectedGroupIds.size,
+        selectedLocaleCodes.size,
+      );
 
       // Filter groups + languages based on user selection
       const filteredGroups = groups.filter((g) => {
+        // Filter by type
+        if (selectedGroupTypes.size > 0 && !selectedGroupTypes.has(g.type))
+          return false;
+        // Filter by selected IDs
         if (selectedGroupIds.size === 0) return true;
         return selectedGroupIds.has(g.id);
       });
 
       const selectedLocales = locales.filter(
-        (l) => selectedLocaleCodes.size === 0 || selectedLocaleCodes.has(l.code)
+        (l) =>
+          selectedLocaleCodes.size === 0 || selectedLocaleCodes.has(l.code),
       );
 
       if (selectedLocales.length === 0) {
@@ -367,6 +492,11 @@ export function App() {
         xml += `    <body>\n`;
 
         filteredGroups.forEach((group) => {
+          console.debug(
+            "handleExportXLIFF: group %s sources=%d",
+            group.id,
+            group.sources?.length ?? 0,
+          );
           group.sources.forEach((source) => {
             const baseValue = source.value ?? "";
             const safeBase = baseValue
@@ -378,7 +508,7 @@ export function App() {
               .replace(/&/g, "&amp;")
               .replace(/</g, "&lt;");
 
-            xml += `      <trans-unit id="${source.id}" xml:space="preserve">\n`;
+            xml += `      <trans-unit id="${source.id}" resname="${group.name}" extradata="groupType:${group.type},sourceType:${source.type}" xml:space="preserve">\n`;
             xml += `        <source>${safeBase}</source>\n`;
             xml += `        <target>${safeTranslated}</target>\n`;
             xml += `      </trans-unit>\n`;
@@ -408,15 +538,25 @@ export function App() {
 
       // Multi-locale export → ZIP
       setStatusMessage("Building XLIFF files and ZIP…");
+      console.debug(
+        "handleExportXLIFF: building ZIP for %d locales",
+        selectedLocales.length,
+      );
 
       const zip = new JSZip();
 
       for (const locale of selectedLocales) {
         const targetLang = locale.code;
 
-        let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<xliff version="1.2">\n`;
-        xml += `  <file source-language="en-GB" target-language="${targetLang}" datatype="plaintext" original="group-export">\n`;
-        xml += `    <body>\n`;
+        // Use array and join for better memory management with large strings
+        const xmlParts: string[] = [];
+        xmlParts.push(
+          `<?xml version="1.0" encoding="UTF-8"?>\n<xliff version="1.2">\n`,
+        );
+        xmlParts.push(
+          `  <file source-language="en-GB" target-language="${targetLang}" datatype="plaintext" original="group-export">\n`,
+        );
+        xmlParts.push(`    <body>\n`);
 
         filteredGroups.forEach((group) => {
           group.sources.forEach((source) => {
@@ -430,19 +570,27 @@ export function App() {
               .replace(/&/g, "&amp;")
               .replace(/</g, "&lt;");
 
-            xml += `      <trans-unit id="${source.id}" xml:space="preserve">\n`;
-            xml += `        <source>${safeBase}</source>\n`;
-            xml += `        <target>${safeTranslated}</target>\n`;
-            xml += `      </trans-unit>\n`;
+            xmlParts.push(
+              `      <trans-unit id="${source.id}" resname="${group.name}" extradata="groupType:${group.type},sourceType:${source.type}" xml:space="preserve">\n`,
+            );
+            xmlParts.push(`        <source>${safeBase}</source>\n`);
+            xmlParts.push(`        <target>${safeTranslated}</target>\n`);
+            xmlParts.push(`      </trans-unit>\n`);
           });
         });
 
-        xml += `    </body>\n  </file>\n</xliff>`;
+        xmlParts.push(`    </body>\n  </file>\n</xliff>`);
+        const xml = xmlParts.join("");
 
-        const safeGroupNames = filteredGroups
+        // Limit filename length to avoid filesystem issues (max 200 chars)
+        let safeGroupNames = filteredGroups
           .map((g) => g.name)
           .join("_")
           .replace(/[^a-zA-Z0-9_-]/g, "-");
+
+        if (safeGroupNames.length > 150) {
+          safeGroupNames = safeGroupNames.substring(0, 150) + "-more";
+        }
 
         const filename = `framer-${safeGroupNames}-${targetLang}.xlf`;
 
@@ -450,13 +598,12 @@ export function App() {
         zip.file(filename, xml);
       }
 
-      // Generate ZIP as ArrayBuffer (more reliable inside Framer plugin)
-      const zipArray = await zip.generateAsync({
-        type: "arraybuffer",
+      // Generate ZIP as blob (better for large files)
+      const zipBlob = await zip.generateAsync({
+        type: "blob",
         compression: "DEFLATE",
+        compressionOptions: { level: 6 },
       });
-
-      const zipBlob = new Blob([zipArray], { type: "application/zip" });
 
       const zipUrl = URL.createObjectURL(zipBlob);
       const a = document.createElement("a");
@@ -519,7 +666,7 @@ export function App() {
         if (existing) {
           if ((existing.value ?? "").length > 32767) {
             console.warn(
-              `Skipping sourceId ${sourceId}: existing baseValue too long`
+              `Skipping sourceId ${sourceId}: existing baseValue too long`,
             );
             continue;
           }
@@ -529,7 +676,7 @@ export function App() {
           });
           if (hasOversized) {
             console.warn(
-              `Skipping sourceId ${sourceId}: existing localized value too long`
+              `Skipping sourceId ${sourceId}: existing localized value too long`,
             );
             continue;
           }
@@ -561,7 +708,7 @@ export function App() {
 
           if (text.length > 32767) {
             console.warn(
-              `❌ VALUE TOO LARGE for sourceId ${sourceId}, locale ${key}, length=${text.length}`
+              `❌ VALUE TOO LARGE for sourceId ${sourceId}, locale ${key}, length=${text.length}`,
             );
             return;
           }
@@ -658,7 +805,7 @@ export function App() {
                     style={{ flex: 1 }}
                     onClick={() =>
                       setSelectedGroupIds(
-                        new Set(groupsRef.current.map((g) => g.id))
+                        new Set(groupsRef.current.map((g) => g.id)),
                       )
                     }
                   >
@@ -739,10 +886,10 @@ export function App() {
 
                   const handleCheckboxClick = (
                     groupId: string,
-                    e: React.MouseEvent<HTMLInputElement>
+                    e: React.MouseEvent<HTMLInputElement>,
                   ) => {
                     const index = visibleFlat.findIndex(
-                      (g) => g.id === groupId
+                      (g) => g.id === groupId,
                     );
                     if (index === -1) return;
 
@@ -752,7 +899,7 @@ export function App() {
                     if (e.shiftKey && lastClickedIndexRef.current !== null) {
                       const start = Math.min(
                         lastClickedIndexRef.current,
-                        index
+                        index,
                       );
                       const end = Math.max(lastClickedIndexRef.current, index);
 
@@ -806,7 +953,7 @@ export function App() {
                             {group.name}
                           </label>
                         ))}
-                      </div>
+                      </div>,
                     );
                   });
 
@@ -837,12 +984,74 @@ export function App() {
                             {group.name}
                           </label>
                         ))}
-                      </div>
+                      </div>,
                     );
                   }
 
                   return output;
                 })()}
+              </div>
+
+              {/* Group Types */}
+              <div style={{ marginBottom: "16px" }}>
+                <h3 style={{ marginBottom: "8px" }}>Group Types</h3>
+                <div className="row mb-8">
+                  <button
+                    className="framer-button-secondary"
+                    style={{ flex: 1 }}
+                    onClick={() =>
+                      setSelectedGroupTypes(
+                        new Set([
+                          "page",
+                          "settings",
+                          "component",
+                          "collection",
+                          "collection-item",
+                          "template",
+                        ]),
+                      )
+                    }
+                  >
+                    Select All
+                  </button>
+                  <button
+                    className="framer-button-secondary"
+                    style={{ flex: 1 }}
+                    onClick={() => setSelectedGroupTypes(new Set())}
+                  >
+                    Clear All
+                  </button>
+                </div>
+                <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+                  {[
+                    "page",
+                    "settings",
+                    "component",
+                    "collection",
+                    "collection-item",
+                    "template",
+                  ].map((type) => (
+                    <label key={type} className="checkbox-row">
+                      <input
+                        type="checkbox"
+                        checked={selectedGroupTypes.has(type)}
+                        onChange={() => {
+                          const next = new Set(selectedGroupTypes);
+                          if (next.has(type)) {
+                            next.delete(type);
+                          } else {
+                            next.add(type);
+                          }
+                          setSelectedGroupTypes(next);
+                        }}
+                        style={{ marginRight: "6px" }}
+                      />
+                      <span style={{ textTransform: "capitalize" }}>
+                        {type}
+                      </span>
+                    </label>
+                  ))}
+                </div>
               </div>
 
               {/* Languages */}
@@ -854,7 +1063,7 @@ export function App() {
                     style={{ flex: 1 }}
                     onClick={() =>
                       setSelectedLocaleCodes(
-                        new Set(localesRef.current.map((l) => l.code))
+                        new Set(localesRef.current.map((l) => l.code)),
                       )
                     }
                   >
