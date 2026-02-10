@@ -1,0 +1,29 @@
+.panel {
+  background: var(--panel-bg);
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.title {
+  font-size: var(--font-size-section);
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.status {
+  margin-top: 24px;
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+}

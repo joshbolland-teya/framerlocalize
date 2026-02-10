@@ -1,0 +1,24 @@
+.container {
+  margin-bottom: 16px;
+}
+
+.title {
+  font-size: var(--font-size-subtitle);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.buttonRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.buttonRow button {
+  flex: 1;
+}
+
+.scrollContainer {
+  max-height: 360px;
+  overflow-y: auto;
+}

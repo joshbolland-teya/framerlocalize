@@ -1,0 +1,17 @@
+.warning {
+  font-size: var(--font-size-small);
+  background: #fff6e5;
+  border: 1px solid #ffd59e;
+  color: #a85600;
+  padding: 8px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .warning {
+    background: rgba(255, 214, 102, 0.1);
+    border-color: rgba(255, 214, 102, 0.3);
+    color: #ffd666;
+  }
+}

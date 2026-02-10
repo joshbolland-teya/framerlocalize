@@ -1,0 +1,52 @@
+/* Custom Theme Variables */
+:root {
+  --panel-bg: #f7f7fb;
+  --panel-border: #e2e2e9;
+  --surface-bg: #ffffff;
+  --surface-border: #dddddd;
+  --text-primary: #1a1a1a;
+  --text-secondary: #6b6b6b;
+  --accent: #6b4eff;
+  --accent-hover: #5338e7;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --panel-bg: #141416;
+    --panel-border: #2a2a2d;
+    --surface-bg: #1a1b1e;
+    --surface-border: #2d2d31;
+    --text-primary: #ffffff;
+    --text-secondary: #b0b0b5;
+    --accent: #8676ff;
+    --accent-hover: #7665ff;
+  }
+}
+
+/* Typography scale */
+:root {
+  --font-size-title: 18px;
+  --font-size-section: 14px;
+  --font-size-subtitle: 12px;
+  --font-size-body: 13px;
+  --font-size-small: 12px;
+  --font-size-button: 14px;
+}
+
+/* Global typography */
+body {
+  font-size: var(--font-size-body);
+  line-height: 1.3;
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+* {
+  box-sizing: border-box;
+}

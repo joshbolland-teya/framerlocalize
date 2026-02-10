@@ -1,0 +1,36 @@
+.container {
+  margin-bottom: 16px;
+}
+
+.title {
+  font-size: var(--font-size-subtitle);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.scrollContainer {
+  margin-bottom: 16px;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.buttonRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.buttonRow button {
+  flex: 1;
+}
+
+.groupSection {
+  margin-bottom: 14px;
+}
+
+.groupHeader {
+  font-weight: 600;
+  font-size: 13px;
+  margin: 6px 0 6px 2px;
+  opacity: 0.7;
+}

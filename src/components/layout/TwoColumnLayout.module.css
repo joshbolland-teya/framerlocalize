@@ -1,0 +1,22 @@
+.grid {
+  display: flex;
+  gap: 24px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.grid > * {
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.grid > *:first-child {
+  width: 400px;
+  min-width: 400px;
+}
+
+.grid > *:last-child {
+  flex: 1;
+  min-width: 0;
+}
